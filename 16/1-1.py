@@ -46,15 +46,17 @@ def decode_input(hex_code):
 def decode_literal(packet, mode):
     ended = False
     version = int(packet[0:3], 2)
-    i = 5
+    i = 6
     value = ''
     while not ended:
-        if packet[i+1] == '1':
-            value += packet[i+1:i+5]
-            i += 5
+        if packet[i] == '1':
+            i += 1
+            value += packet[i:i+4]
+            i += 4
         else:
-            value += packet[i+1:i+5]
-            i += 5
+            i += 1
+            value += packet[i:i+4]
+            i += 4
             ended = True
     if mode == 'version':
         return version
@@ -74,11 +76,12 @@ def determine_type(packet):
     else:
         if packet[6] == '0':
             return 'op_15'
-        else:
+        elif packet[6] == '1':
             return 'op_11'
 
 
 def handle_op_15(packet, mode):
+    pdb.set_trace()
     version = int(packet[0:3], 2)
     sub_bit_length = int(packet[7:22], 2)
     packet_end = 22 + sub_bit_length
@@ -95,27 +98,29 @@ def handle_op_15(packet, mode):
         return version, packet_end
 
 
-def handle_op_11(packet, mode):
+def handle_op_11(packet, mode, header=0):
     # pdb.set_trace()
     version = int(packet[0:3], 2)
     sub_number = int(packet[7:18], 2)
     packets = []
-    x = 17
+    x = 18
+    print(f'entered with {packet}')
     for i in range(0, sub_number):
-        x += 1
         packet_type = determine_type(packet[x:])
+#        print(f'HO11 type is {packet_type} for {packet}')
         if packet_type == 'literal':
             packet_end = x + decode_literal(packet[x:], 'end')
-            packets.append(packet[x:packet_end+1])
+            packets.append(packet[x:packet_end])
             x = packet_end
         elif packet_type == 'op_15':
             packet_end = x + handle_op_15(packet[x:], 'end')
             packets.append(packet[x:packet_end])
             x = packet_end
         elif packet_type == 'op_11':
-            packet_end = handle_op_11(packet[x:], 'end')
+            packet_end = x + handle_op_11(packet[x:], 'end')
             packets.append(packet[x:packet_end])
-            x = packet_end
+            x = packet_end 
+        # x += 1
     if mode == 'subs':
         return packets
     elif mode == 'version':
@@ -137,20 +142,22 @@ def decode_operator(packet):
     else:
         z = 18
     packets = []
+    # pdb.set_trace()
     while z < len(packet) and (len(packet) - z) >= 10:
         packet_type = determine_type(packet[z:])
         if packet_type == 'literal':
-            packet_end = decode_literal(packet[z:], 'end') + 1
-            packets.append(packet[z:z+packet_end])
-            z += packet_end
+            packet_end = z + decode_literal(packet[z:], 'end')
+            packets.append(packet[z:packet_end])
+            z = packet_end - 1
         elif packet_type == 'op_15':
-            packet_end = handle_op_15(packet[z:], 'end')
-            packets.append(packet[z:z+packet_end])
-            z += packet_end
+            packet_end = z + handle_op_15(packet[z:], 'end')
+            packets.append(packet[z:packet_end])
+            z = packet_end
         elif packet_type == 'op_11':
-            packet_end = handle_op_11(packet[z:], 'end')
-            packets.append(packet[z:z+packet_end])
-            z += packet_end
+            packet_end = z + handle_op_11(packet[z:], 'end')
+            packets.append(packet[z:packet_end])
+            z = packet_end
+        z += 1
     return packets
 
 
@@ -165,6 +172,7 @@ i = 0
 version_count = 0
 while i < len(binary_input) and (len(binary_input) - i) >= 10:
     packet_type = determine_type(binary_input[i:])
+    print(f'Type is {packet_type} for {binary_input[i:]}')
     if packet_type == 'literal':
         version, end = decode_literal(binary_input[i:], 'version&end')
         version_count += version
@@ -178,19 +186,22 @@ while i < len(binary_input) and (len(binary_input) - i) >= 10:
         version_count += version
         print(f'v of {version} from {binary_input[i:]}')
         packets = [binary_input[i:i+end]]
+        i += end
         while packets:
             inpr_packet = packets.pop()
             cur_packet_type = determine_type(inpr_packet)
+            print(f'Type2 is {cur_packet_type} for {inpr_packet}')
             if cur_packet_type == 'literal':
                 version_count += int(inpr_packet[0:3], 2)
                 print(f'Nested lit v of {int(inpr_packet[0:3], 2)} for {inpr_packet}')
             else:
                 for packet in decode_operator(inpr_packet):
+                    print(f'Returned {decode_operator(inpr_packet)}')
                     packets.append(packet)
                     if determine_type(packet) != 'literal':
                         print(f'Found {packet} with v {int(packet[0:3], 2)}')
                         version_count += int(packet[0:3], 2)
-        i += end
+                print(f'Packets are {packets}')
 
 print(version_count)
     
